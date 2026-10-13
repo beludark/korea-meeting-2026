@@ -21,7 +21,18 @@ button,select,input{font:inherit}
 input,select{font-size:16px;padding:9px 10px;border:1px solid #d6d6d6;border-radius:8px;background:#fff;color:var(--ink);width:100%}
 input[type=checkbox]{width:auto}
 :focus-visible{outline:2px solid #111;outline-offset:2px}
-.day{border-bottom:1px solid var(--line);padding:6px 0 10px}
+.day{border-bottom:1px solid var(--line);padding:6px 0 10px;scroll-margin-top:96px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;padding:6px 0 12px}
+.ch{text-align:center;font-size:12px;color:var(--mute);padding:4px 0}
+.cc{border:1px solid var(--line);border-radius:8px;min-height:92px;padding:4px;cursor:pointer;overflow:hidden;background:#fff}
+.cc.off{border:0;cursor:default}
+.cn{font-weight:600;font-size:13px;margin-bottom:3px}
+.cn em{font-style:normal;font-weight:400;color:var(--mute);font-size:10px;margin-left:3px}
+.chip{font-size:10px;line-height:1.3;background:#f1f1f1;border-radius:4px;padding:1px 4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.nt{background:#111;color:#fff}
+.chip.co{background:#fff;border:1px dashed #ccc;color:var(--mute)}
+.more{font-size:10px;color:var(--mute)}
+.hint{color:var(--mute);font-size:13px;margin:12px 0 0}
 .dh{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
 .dh span{font-weight:600}.dh span::first-letter{text-transform:uppercase}
 .add{border:0;background:none;color:var(--ink);font-weight:600;padding:6px 0 6px 12px;cursor:pointer}
@@ -63,15 +74,16 @@ dialog h3{margin:0 0 14px;font-size:18px}
 <button class="b1" id="login" style="width:100%">Se connecter</button><p id="gmsg" style="color:var(--warn);font-size:14px"></p></div></div>
 
 <div id="app" hidden>
- <header class="top"><div class="in"><h1>Corée 2026</h1>
-  <div class="tabs"><button class="tab" id="t-plan" aria-selected="true">Planning</button><button class="tab" id="t-people" aria-selected="false">Personnes</button></div></div></header>
+ <header class="top"><div class="in"><h1>Corée 2026 <small id="sync" style="font-size:12px;font-weight:400;color:var(--mute);margin-left:8px"></small></h1>
+  <div class="tabs"><button class="tab" id="t-plan" aria-selected="true">Planning</button><button class="tab" id="t-cal" aria-selected="false">Calendrier</button><button class="tab" id="t-people" aria-selected="false">Personnes</button></div></div></header>
  <div class="wrap">
   <section id="v-plan"></section>
+  <section id="v-cal" hidden></section>
   <section id="v-people" hidden>
    <div class="bar2"><input id="q" placeholder="Rechercher une personne"><button class="b1" data-addp="1">+ Personne</button></div>
    <div id="plist"></div>
   </section>
-  <div class="foot"><button class="b2" id="exp">Exporter une sauvegarde</button><label class="b2"><input type="file" id="imp" accept=".json" hidden>Importer</label><button class="b2" id="out">Se déconnecter</button><span id="sync"></span></div>
+  <div class="foot"><button class="b2" id="exp">Exporter une sauvegarde</button><label class="b2"><input type="file" id="imp" accept=".json" hidden>Importer</label><button class="b2" id="out">Se déconnecter</button><button class="b2" id="push">Envoyer cet appareil vers le cloud</button></div>
  </div>
 </div>
 <dialog id="dlg"></dialog>
@@ -88,10 +100,11 @@ function dstr(i,o){var d=new Date(START+"T12:00:00");d.setDate(d.getDate()+i-1);
 function byTime(a,b){return (a.time||"99").localeCompare(b.time||"99")}
 function sel(list,v){return list.map(function(c){return '<option'+(c===v?' selected':'')+'>'+c+'</option>'}).join("")}
 function timeOpts(v){var o='<option value="">--:--</option>';for(var m=0;m<1440;m+=15){var t=('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);o+='<option'+(t===v?' selected':'')+'>'+t+'</option>'}return o}
-function getData(){return {people:people,meetings:meetings}}
+var lts=0;
+function getData(){return {people:people,meetings:meetings,ts:lts}}
 function applyData(d){
  if(!d)return;
- if(d.people){people=d.people;meetings=d.meetings||[];return}
+ if(d.people){people=d.people;meetings=d.meetings||[];lts=d.ts||d.updated||0;return}
  if(d.friends){ /* ancien format */
   people=[];meetings=[];
   d.friends.forEach(function(f){people.push({id:f.id,name:f.name,city:f.city,note:f.note||"",tag:!!f.tag})});
@@ -99,7 +112,7 @@ function applyData(d){
  }
 }
 try{var s0=localStorage.getItem("coree-v3")||localStorage.getItem("coree-v2");if(s0)applyData(JSON.parse(s0))}catch(e){}
-function save(){try{localStorage.setItem("coree-v3",JSON.stringify(getData()))}catch(e){}if(window.cloudSave)window.cloudSave()}
+function save(){lts=Date.now();try{localStorage.setItem("coree-v3",JSON.stringify(getData()))}catch(e){}if(window.cloudSave)window.cloudSave()}
 function commit(){save();render()}
 
 function rowHtml(m){var p=P(m.pid)||{};
@@ -127,7 +140,22 @@ function renderPeople(){
   var ms=meetings.filter(function(m){return m.pid===p.id}).sort(function(a,b){return a.day-b.day||byTime(a,b)});
   return '<div class="row" data-pid="'+p.id+'"><div class="who"><b>'+esc(p.name)+'</b>'+(p.tag?'<i class="dot"></i>':'')+'<small>'+esc(p.city)+(p.note?' · '+esc(p.note):'')+'</small><small>'+(ms.length?ms.map(function(m){return 'J'+m.day+(m.time?' '+m.time:'')+(m.night?' (nuit)':'')}).join(" · "):'Pas encore de rendez-vous')+'</small></div></div>'}).join(""):'<p class="empty">Aucune personne pour l’instant.</p>';
 }
-function render(){renderPlan();renderPeople()}
+function renderCal(){
+ var off=(new Date(START+"T12:00:00").getDay()+6)%7,total=Math.ceil((off+NDAYS)/7)*7;
+ var h='<p class="hint">Touchez un jour pour voir le détail. Noir : nuit. Point rose : pastille.</p><div class="cal">'+["L","M","M","J","V","S","D"].map(function(n){return '<div class="ch">'+n+'</div>'}).join("");
+ for(var c=0;c<total;c++){
+  var i=c-off+1;
+  if(i<1||i>NDAYS){h+='<div class="cc off"></div>';continue}
+  var d=new Date(START+"T12:00:00");d.setDate(d.getDate()+i-1);
+  var lab=d.getDate()+((d.getDate()===1||i===1)?'<em>'+d.toLocaleDateString("fr-FR",{month:"short"})+'</em>':'');
+  var it=[];
+  meetings.filter(function(m){return m.day===i-1&&m.night}).forEach(function(m){it.push('<div class="chip co">↳ '+esc((P(m.pid)||{}).name||"?")+'</div>')});
+  meetings.filter(function(m){return m.day===i}).sort(byTime).forEach(function(m){var p=P(m.pid)||{};it.push('<div class="chip'+(m.night?' nt':'')+'">'+(p.tag?'<i class="dot" style="margin:0 3px 0 0;width:6px;height:6px"></i>':'')+esc(p.name||"?")+'</div>')});
+  h+='<div class="cc" data-cal="'+i+'"><div class="cn">'+lab+'</div>'+it.slice(0,3).join("")+(it.length>3?'<div class="more">+'+(it.length-3)+'</div>':'')+'</div>';
+ }
+ $("v-cal").innerHTML=h+'</div>';
+}
+function render(){renderPlan();renderCal();renderPeople()}
 
 function openMeeting(id,day){
  var m=id?meetings.find(function(x){return x.id===id}):null;
@@ -175,16 +203,21 @@ function delPerson(){
  people=people.filter(function(x){return x.id!==editP});meetings=meetings.filter(function(m){return m.pid!==editP});
  $("dlg").close();commit();
 }
-function setView(v){$("v-plan").hidden=v!=="plan";$("v-people").hidden=v!=="people";$("t-plan").setAttribute("aria-selected",v==="plan");$("t-people").setAttribute("aria-selected",v==="people");window.scrollTo(0,0)}
+function setView(v,day){
+ ["plan","cal","people"].forEach(function(k){$("v-"+k).hidden=v!==k;$("t-"+k).setAttribute("aria-selected",v===k)});
+ var el=day&&document.querySelector('.day[data-day="'+day+'"]');
+ if(el)el.scrollIntoView();else window.scrollTo(0,0);
+}
 
 document.addEventListener("click",function(e){
  var t=e.target,c;
+ if(c=t.closest("[data-cal]")){setView("plan",+c.dataset.cal);return}
  if(c=t.closest("[data-add]")){openMeeting(null,+c.dataset.add);return}
  if(c=t.closest("[data-mid]")){openMeeting(+c.dataset.mid);return}
  if(c=t.closest("[data-pid]")){openPerson(+c.dataset.pid);return}
  if(t.closest("[data-addp]")){openPerson(null);return}
  var id=t.id;
- if(id==="t-plan")setView("plan");else if(id==="t-people")setView("people");
+ if(id==="t-plan")setView("plan");else if(id==="t-cal")setView("cal");else if(id==="t-people")setView("people");
  else if(id==="m-cancel"||id==="p-cancel")$("dlg").close();
  else if(id==="m-save")saveMeeting();else if(id==="m-del")delMeeting();
  else if(id==="p-save")savePerson();else if(id==="p-del")delPerson();
@@ -213,7 +246,7 @@ render();
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+import { initializeFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 const app=initializeApp({
   apiKey:"AIzaSyBPME6NHyEHC6OFAlAb9pyLrEBqMalf3QA",
   authDomain:"korea-meeting-2026.firebaseapp.com",
@@ -222,18 +255,24 @@ const app=initializeApp({
   messagingSenderId:"454731071840",
   appId:"1:454731071840:web:152258df9c3a66f0cd9e05"
 });
-const auth=getAuth(app),db=getFirestore(app),ref=doc(db,"trips","coree2026");
+const auth=getAuth(app),db=initializeFirestore(app,{experimentalAutoDetectLongPolling:true}),ref=doc(db,"trips","coree2026");
 const $=id=>document.getElementById(id);
 const status=t=>{$("sync").textContent=t};
-let loaded=false,timer=null,unsub=null;const mine=new Set();
+let loaded=false,first=true,timer=null,unsub=null;const mine=new Set();
 window.cloudSave=function(){
   if(!loaded)return;
   clearTimeout(timer);status("Enregistrement…");
   timer=setTimeout(async()=>{
     const ts=Date.now();mine.add(ts);
     try{await setDoc(ref,{...JSON.parse(JSON.stringify(window.getData())),updated:ts});status("Enregistré")}
-    catch(e){status("Erreur de sauvegarde")}
+    catch(e){status("Erreur de sauvegarde ("+(e.code||"?")+")")}
   },600);
+};
+$("push").onclick=async()=>{
+  if(!confirm("Envoyer les données de cet appareil vers le cloud ? Cela remplace celles qui y sont."))return;
+  const ts=Date.now();mine.add(ts);status("Envoi…");
+  try{await setDoc(ref,{...JSON.parse(JSON.stringify(window.getData())),updated:ts});loaded=true;status("Envoyé")}
+  catch(e){status("Erreur : "+(e.code||"?"))}
 };
 $("login").onclick=async()=>{
   $("gmsg").textContent="";
@@ -247,22 +286,29 @@ $("pw").addEventListener("keydown",e=>{if(e.key==="Enter")$("login").click()});
 $("out").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,user=>{
   if(unsub){unsub();unsub=null}
-  loaded=false;
+  loaded=false;first=true;
   if(!user){$("gate").hidden=false;$("app").hidden=true;return}
   $("gate").hidden=true;$("app").hidden=false;status("Chargement…");
   unsub=onSnapshot(ref,snap=>{
     if(snap.metadata.hasPendingWrites)return;
-    if(snap.exists()){
-      const d=snap.data();
-      if(d.updated&&mine.has(d.updated)){status("Enregistré");return}
-      window.applyData(d);window.render();
-      if(!d.people)window.cloudSave();
-      loaded=true;status("Synchronisé");
-      if(!d.people)window.cloudSave();
-    }else{loaded=true;window.cloudSave()}
+    const d=snap.exists()?snap.data():null;
+    if(d&&d.updated&&mine.has(d.updated)){status("Enregistré");return}
+    const lo=window.getData();
+    const localHas=lo.people.length||lo.meetings.length;
+    const cloudHas=d&&((d.people&&d.people.length)||(d.meetings&&d.meetings.length)||(d.friends&&d.friends.length));
+    const cloudTs=d?(d.ts||d.updated||0):0;
+    if(first&&localHas&&(!cloudHas||lo.ts>cloudTs)){
+      first=false;loaded=true;window.cloudSave();status("Données de cet appareil envoyées");return;
+    }
+    first=false;
+    if(d){window.applyData(d);window.render()}
+    loaded=true;status("Synchronisé");
+    if(d&&!d.people&&cloudHas)window.cloudSave();
   },err=>{
-    $("gate").hidden=false;$("app").hidden=true;
-    $("gmsg").innerHTML="Accès refusé. Ajoutez cet identifiant dans les règles Firestore :<code>"+user.uid+"</code>";
+    if(err.code==="permission-denied"){
+      $("gate").hidden=false;$("app").hidden=true;
+      $("gmsg").innerHTML="Accès refusé. Ajoutez cet identifiant dans les règles Firestore :<code>"+user.uid+"</code>";
+    }else{status("Hors ligne, non synchronisé ("+(err.code||"?")+")")}
   });
 });
 </script>
